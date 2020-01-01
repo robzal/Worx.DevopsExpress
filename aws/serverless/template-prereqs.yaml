@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates pre-requisite S3 buckets, policies and CMK KMS key and grants access to other deployment accounts
+Parameters:
+  AcctPrefix:
+    Type: String
+    Default: worx
+    Description: Short Code for the Account to form part of resource and stack names
+  Environment:
+    Type: String
+    Default: admin
+    Description: Environment Name to form part of resource and stack names and config values
+  AppName:
+    Type: String
+    Default: serverless-demo
+    Description: Short Name for the Application being deployed, to be used in resource and stack names
+  DevAccount:
+    Description: AWS AccountNumber for dev
+    Type: String
+    Default: 967792619409
+  ProdAccount:
+    Description: AWS AccountNumber for production
+    Type: String
+    Default: 271005954527
+  CodePipelineBuildPermissions:
+    Description: Conditionally adds the access required by code pipeline & build role
+    Type: String
+    Default: true
+Conditions:
+  PipelineBuildPermissions: !Equals [ !Ref CodePipelineBuildPermissions, true ]
+Resources:
+  PipelineKMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Used by Assumed Roles in Dev/Prod accounts to Encrypt/Decrypt code
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Id: !Ref AWS::StackName
+        Statement:
+          -
+            Sid: Allows admin of the key
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - "kms:Create*"
+              - "kms:Describe*"
+              - "kms:Enable*"
+              - "kms:List*"
+              - "kms:Put*"
+              - "kms:Update*"
+              - "kms:Revoke*"
+              - "kms:Disable*"
+              - "kms:Get*"
+              - "kms:Delete*"
+              - "kms:ScheduleKeyDeletion"
+              - "kms:CancelKeyDeletion"
+            Resource: "*"
+          -
+            Sid: Allow use of the key By cross account identities
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${ProdAccount}:root
+                - !Sub arn:aws:iam::${DevAccount}:root
+                - !If
+                  - PipelineBuildPermissions
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${AcctPrefix}-${Environment}-${AppName}-pipelinerole
+                  - !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+            Resource: "*"
+  PipelineKMSKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/codepipeline-demo
+      TargetKeyId: !Ref PipelineKMSKey
+  PipelineBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub '${AcctPrefix}-${Environment}-pipelines'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration: 
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Sub '${PipelineKMSKey}'
+  PipelineBucketPolicy: 
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref PipelineBucket
+      PolicyDocument: 
+        Statement: 
+          - 
+            Sid: Allows Dev Account access to pipeline bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${PipelineBucket.Arn}/*'
+              - !Sub '${PipelineBucket.Arn}'
+            Principal: 
+              AWS:
+                - !Sub 'arn:aws:iam::${DevAccount}:root'
+          - 
+            Sid: Allows Prod Account access to pipeline bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${PipelineBucket.Arn}/*'
+              - !Sub '${PipelineBucket.Arn}'
+            Principal: 
+              AWS:
+                - !Sub 'arn:aws:iam::${ProdAccount}:root'
+          - 
+            Sid: Allows pipeline role access to pipeline bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${PipelineBucket.Arn}/*'
+              - !Sub '${PipelineBucket.Arn}'
+            Principal: 
+              AWS:
+                - !If
+                  - PipelineBuildPermissions
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${AcctPrefix}-${Environment}-${AppName}-pipelinerole
+                  - !Sub arn:aws:iam::${AWS::AccountId}:root
+  BuildBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub '${AcctPrefix}-${Environment}-builds'
+  BuildBucketPolicy: 
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: !Ref BuildBucket
+      PolicyDocument: 
+        Statement: 
+          - 
+            Sid: Allows Dev Account access to build bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${BuildBucket.Arn}/*'
+              - !Sub '${BuildBucket.Arn}'
+            Principal: 
+              AWS:
+                - !Sub 'arn:aws:iam::${DevAccount}:root'
+          - 
+            Sid: Allows Prod Account access to build bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${BuildBucket.Arn}/*'
+              - !Sub '${BuildBucket.Arn}'
+            Principal: 
+              AWS:
+                - !Sub 'arn:aws:iam::${ProdAccount}:root'
+Outputs:
+  PipelineKMSKey:
+    Value: !GetAtt [PipelineKMSKey,Arn]
+  PipelineBucket:
+    Value: !Ref PipelineBucket
+  BuildBucket:
+    Value: !Ref BuildBucket

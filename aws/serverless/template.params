@@ -1,0 +1,3 @@
+'Environment=${ENVIRONMENT}',
+'AcctPrefix=${ACCT_PREFIX}',
+'RandomValue=$(shell bash -c 'echo $$RANDOM')'

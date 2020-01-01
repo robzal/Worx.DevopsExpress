@@ -1,0 +1,7 @@
+{
+  "Parameters" : {
+    "Environment" : "${ENVIRONMENT}",
+    "AcctPrefix" : "${ACCT_PREFIX}",
+    "AppName" : "${APPNAME}"
+  }
+}

@@ -1,0 +1,64 @@
+version: 0.2
+
+env:
+  variables:
+    ENV_FILE: ".env"
+    SAM_DEBUG_OPTION:
+
+phases:
+  install:
+    runtime-versions:
+      docker: 18
+      python: 3.8
+      dotnet: 3.0
+    commands:
+      # Upgrade AWS CLI to the latest version
+      - pip3 install --upgrade awscli
+      - pip3 install aws-sam-cli
+  pre_build:
+    commands:
+      - echo Build started on `date`
+      - echo Getting latest commit hash
+      - VERSION=`echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7`
+      - echo $VERSION > version.log
+      - echo $VERSION
+      - echo Reading in env file $ENV_FILE
+      - cp $ENV_FILE .env
+      - chmod 777 .env
+      - . ./.env
+      - echo Build set for environment $ENVIRONMENT
+      - echo Creating config file for cloudformation
+      - envsubst < .conf.template > .conf
+      - cat .conf
+  build:
+    commands:
+      - echo Building and Packaging Cloudformation template for environment $ENVIRONMENT
+
+      - |
+        aws --version
+  
+      - |
+        sam --version
+  
+      - |
+        sam build \
+          --region ${AWS_REGION} \
+          ${SAM_DEBUG_OPTION}
+      
+      - |
+        sam package \
+          --template-file .aws-sam/build/template.yaml \
+          --output-template-file template-out.yaml \
+          --s3-bucket ${BUILD_BUCKET} \
+          --s3-prefix cfn \
+          --region ${AWS_REGION} \
+          ${SAM_DEBUG_OPTION}
+     
+  post_build:
+    commands:
+      - echo Build completed on `date`
+artifacts:
+  files:
+    - template-out.yaml
+    - ./.conf
+  discard-paths: yes

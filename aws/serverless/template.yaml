@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Demo Serverless Template for serverless resources in AWS
+  Lambda
+  API Gateway
+  DynamoDB
+  S3
+  Step Functions
+  Lambda Layers
+Parameters:
+  AcctPrefix:
+    Type: String
+    Default: worx
+    Description: Short Code for the Account to form part of resource and stack names
+  Environment:
+    Type: String
+    Default: admin
+    Description: Environment Name to form part of resource and stack names and config values
+  AppName:
+    Type: String
+    Default: serverless-demo
+    Description: Short Name for the Application being deployed, to be used in resource and stack names
+  RandomValue:
+    Type: 'String'
+    Default: '1234'
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        ACCT_PREFIX: !Ref AcctPrefix
+        APPNAME: !Ref AppName
+        USER_TABLE_NAME: !Sub '${AcctPrefix}-${Environment}-${AppName}-users'
+Resources:
+  SamBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub '${AcctPrefix}-${Environment}-${AppName}-${AWS::Region}-sam'
+  SamUserDynamoDBTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Sub '${AcctPrefix}-${Environment}-${AppName}-users'
+      AttributeDefinitions:
+        - AttributeName: 'userid'
+          AttributeType: 'S'
+        - AttributeName: 'surname'
+          AttributeType: 'S'
+        - AttributeName: 'firstname'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'userid'
+          KeyType: 'HASH'
+      BillingMode: 'PAY_PER_REQUEST'
+      GlobalSecondaryIndexes:
+        - IndexName: 'user-firstname'
+          KeySchema:
+            - AttributeName: 'firstname'
+              KeyType: 'HASH'
+          Projection:
+            NonKeyAttributes:
+              - 'firstname'
+              - 'userid'
+            ProjectionType: 'INCLUDE'
+        - IndexName: 'user-surname'
+          KeySchema:
+            - AttributeName: 'surname'
+              KeyType: 'HASH'
+          Projection:
+            NonKeyAttributes:
+              - 'surname'
+              - 'userid'
+            ProjectionType: 'INCLUDE'
+  SamCustomLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      CompatibleRuntimes: 
+        - python3.7
+        - python3.8
+        - python3.6
+      ContentUri: './layers/custom/'
+      Description: 'custom stuff'
+      LayerName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMCustomLayer'
+  SamApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: './lambdas/api-lambda/'
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      FunctionName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMAPIFunction'
+      Events:
+        APIGetAllEvent:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /users
+            Method: get
+            RestApiId: !Ref SamApi
+        APIGetEvent:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /user/{id}
+            Method: get
+            RestApiId: !Ref SamApi
+        APIPostEvent:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /user/{id}
+            Method: post
+            RestApiId: !Ref SamApi
+      Policies:
+        - 'AWSLambdaBasicExecutionRole'
+        - 'AmazonDynamoDBFullAccess'
+      Layers:
+        - !Ref 'SamCustomLayer'
+  SamS3Function:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: './lambdas/s3-lambda/'
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.7
+      FunctionName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMS3Function'
+      Events:
+        S3Event:
+          Type: S3 # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Bucket: !Ref SamBucket
+            Events: s3:ObjectCreated:*
+      Policies:
+        - 'AWSLambdaBasicExecutionRole'
+      Layers:
+        - !Ref 'SamCustomLayer'
+  SamApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub '${AcctPrefix}-${Environment}-${AppName}-SamApi'
+      StageName: 'Test'
+      Auth:
+        ApiKeyRequired: true
+  SamApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties: 
+      RestApiId: !Ref SamApi
+      StageName: 'v1'
+  SamApiKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - 'SamApiDeployment'
+    Properties:
+      Description: 'Key for exmaple Sam API Endpoint'
+      Enabled: true
+      GenerateDistinctId: true
+      Name: !Sub '${AcctPrefix}-${Environment}-${AppName}-SamApiKey'
+      StageKeys:
+        - RestApiId: !Ref SamApi
+          StageName: 'v1'
+  SamApiUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - 'SamApiKey'
+    Properties:
+      ApiStages:
+        - ApiId: !Ref SamApi
+          Stage: 'v1'
+      Description: SAM API Usage Plan
+      Throttle:
+        BurstLimit: 200
+        RateLimit: 100
+      UsagePlanName: SamApi_UsagePlan
+  SamApiUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - 'SamApiUsagePlan'
+      - 'SamApiKey'
+    Properties:
+      KeyId: !Ref SamApiKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref SamApiUsagePlan
+  SamStateMachine:
+    Type: 'AWS::StepFunctions::StateMachine'
+    Properties:
+      StateMachineName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMStepFunction'
+      DefinitionString:
+        !Sub
+          - |-
+            {
+              "Comment": "SAM data import process",
+              "StartAt": "Load Data",
+              "States": {
+                "Load Data": {
+                  "Type": "Task",
+                  "Resource": "${LoadDataARN}",
+                  "Next": "Check Data",
+                  "Catch": [
+                              {
+                                "ErrorEquals": [ "States.ALL" ],
+                                "Next": "Communication Failed",
+                                "ResultPath": "$[0].error"
+                              }
+                            ]
+                },
+                "Check Data": {
+                  "Type": "Task",
+                  "Resource": "${LoadDataARN}",
+                  "End": true,
+                  "Catch": [
+                              {
+                                "ErrorEquals": [ "States.ALL" ],
+                                "Next": "Communication Failed",
+                                "ResultPath": "$[0].error"
+                              }
+                            ]
+                },
+                "Communication Failed": {
+                  "Type": "Task",
+                  "Resource": "${ErrorARN}",
+                  "Parameters": {
+                    "Input.$": "$"
+                  },
+                  "End": true
+                }
+              }
+            }
+          -
+            LoadDataARN: !GetAtt 'SamS3Function.Arn'
+            ErrorARN: !GetAtt 'SamApiFunction.Arn'
+      RoleArn: !GetAtt 'SamStateMachineIAMRole.Arn'
+  SamStateMachineIAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SamStateMachineIAMRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - !Sub states.${AWS::Region}.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Path: "/"
+      Policies:
+        - PolicyName: SAMExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: '*'
+
+Outputs:
+  SamApi:
+    Description: "API Gateway endpoint URL for V1 stage"
+    Value: !Sub "https://${SamApi}.execute-api.${AWS::Region}.amazonaws.com/v1/"
+  SamApiFunction:
+    Description: "Sam API Lambda ARN"
+    Value: !GetAtt SamApiFunction.Arn
+  SamS3Function:
+    Description: "Sam S3 Lambda ARN"
+    Value: !GetAtt SamS3Function.Arn

@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Demo Serverless Template for serverless resources in AWS
+  Lambda
+  API Gateway
+  DynamoDB
+  S3
+  Step Functions
+  Lambda Layers
+Parameters:
+  AcctPrefix:
+    Type: 'String'
+    Default: 'worx'
+  Environment:
+    Type: 'String'
+    Default: 'admin'
+  AppName:
+    Type: 'String'
+    Default: 'crossacctpipeline'
+  RandomValue:
+    Type: 'String'
+    Default: '1234'
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 256
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        ACCT_PREFIX: !Ref AcctPrefix
+        RANDOM_VALUE: !Ref RandomValue
+Resources:
+  CustomLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      CompatibleRuntimes: 
+        - python3.7
+        - python3.8
+        - python3.6
+      ContentUri: './layers/custom/'
+      Description: 'custom stuff'
+      LayerName: !Sub '${AcctPrefix}-${Environment}-${AppName}-CustomLayer'
+  ApiGWLambda:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: './lambdas/api-lambda/'
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      FunctionName: !Sub '${AcctPrefix}-${Environment}-${AppName}-ApiGWLambda'
+      Events:
+        APIGetAllEvent:
+          Type: Api 
+          Properties:
+            Path: /users
+            Method: get
+            RestApiId: !Ref ApiGW
+        APIGetEvent:
+          Type: Api 
+          Properties:
+            Path: /user/{id}
+            Method: get
+            RestApiId: !Ref ApiGW
+        APIPostEvent:
+          Type: Api 
+          Properties:
+            Path: /user/{id}
+            Method: post
+            RestApiId: !Ref ApiGW
+      Policies:
+        - 'AWSLambdaBasicExecutionRole'
+      Layers:
+        - !Ref 'CustomLayer'
+  ApiGW:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub '${AcctPrefix}-${Environment}-${AppName}-ApiGW'
+      StageName: 'Test'
+      Auth:
+        ApiKeyRequired: true
+  ApiGWDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties: 
+      RestApiId: !Ref ApiGW
+      StageName: 'v1'
+  ApiGWKey:
+    Type: AWS::ApiGateway::ApiKey
+    DependsOn:
+      - 'ApiGWDeployment'
+    Properties:
+      Description: 'Key for exmaple Sam API Endpoint'
+      Enabled: true
+      GenerateDistinctId: true
+      Name: !Sub '${AcctPrefix}-${Environment}-${AppName}-ApiGWKey'
+      StageKeys:
+        - RestApiId: !Ref ApiGW
+          StageName: 'v1'
+  ApiGWUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    DependsOn:
+      - 'ApiGWKey'
+    Properties:
+      ApiStages:
+        - ApiId: !Ref ApiGW
+          Stage: 'v1'
+      Description: SAM API Usage Plan
+      Throttle:
+        BurstLimit: 200
+        RateLimit: 100
+      UsagePlanName: ApiGW_UsagePlan
+  ApiGWUsagePlanKey:
+    Type: AWS::ApiGateway::UsagePlanKey
+    DependsOn:
+      - 'ApiGWUsagePlan'
+      - 'ApiGWKey'
+    Properties:
+      KeyId: !Ref ApiGWKey
+      KeyType: API_KEY
+      UsagePlanId: !Ref ApiGWUsagePlan
+        
+Outputs:
+  ApiGW:
+    Description: "API Gateway endpoint URL for V1 stage"
+    Value: !Sub "https://${ApiGW}.execute-api.${AWS::Region}.amazonaws.com/v1/"
+  ApiGWLambda:
+    Description: "API GW Lambda ARN"
+    Value: !GetAtt ApiGWLambda.Arn

@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: 2010-09-09
+Parameters:
+    AcctPrefix:
+        Type: String
+        Default: worx
+        Description: Short Code for the Account to form part of resource and stack names
+    Environment:
+        Type: String
+        Default: admin
+        Description: Environment Name to form part of resource and stack names and config values
+    AppName:
+        Type: String
+        Default: crossacctpipeline
+        Description: Short Name for the Application being deployed, to be used in resource and stack names
+    PipelineBucket:
+        Type: String
+        Default: worx-admin-pipelines
+        Description: Name of S3 bucket for CodePipeline to use
+    PipelineBucketARN:
+        Type: String
+        Default: arn:aws:s3:::worx-admin-pipelines
+        Description: ARN of S3 bucket for CodePipeline to use
+    PipelineBucketKMSKeyARN:
+        Type: String
+        Default: arn:aws:kms:ap-southeast-2:005548444942:alias/codepipeline-demo
+        Description: ARN of KMS key used for S3 pipeline bucket encryption
+    DevAccountDeploymentRoleARN:
+        Type: String
+        Default: arn:aws:iam::967792619409:role/Admins
+        Description: ARN of the deployment role to assume in the dev account when deploying cloudformation template
+    ProdAccountDeploymentRoleARN:
+        Type: String
+        Default: arn:aws:iam::271005954527:role/Admins
+        Description: ARN of the deployment role to assume in the prod account when deploying cloudformation template
+    BuildBucket:
+        Type: String
+        Default: worx-admin-builds
+        Description: Name of S3 bucket for build artefacts 
+    BuildBucketARN:
+        Type: String
+        Default: arn:aws:s3:::worx-admin-builds
+        Description: ARN of S3 bucket for build artefacts 
+    CodeCommitRepoARN:
+        Type: String
+        Default: arn:aws:codecommit:ap-southeast-2:005548444942:codepipeline-demo
+        Description: ARN of the CodeCommit Repo containing source to deploy with the pipeline
+    CodeCommitRepoName:
+        Type: String
+        Default: codepipeline-demo
+        Description: Name of the CodeCommit Repo comtaining source to deploy with the pipeline
+    CodeCommitBranchName:
+        Type: String
+        Default: master
+        Description: Name of the CodeCommit Repo comtaining source to deploy with the pipeline
+    CodeTemplatePath:
+        Type: String
+        Default: template.yaml
+        Description: Name and path to the cloudformation template in the repo to deploy
+    CodeBuildEnvironment:
+        Type: String
+        Default: "aws/codebuild/standard:3.0"
+        Description: Name of the image to use for the CodeBuild container
+  
+Resources:
+    BuildProject:
+        Type: AWS::CodeBuild::Project
+        Properties:
+            Name: !Sub ${AcctPrefix}-${Environment}-${AppName}-codebuild01
+            EncryptionKey: !Ref PipelineBucketKMSKeyARN
+            Artifacts:
+                Type: CODEPIPELINE
+            Environment: 
+                Type: LINUX_CONTAINER
+                ComputeType: BUILD_GENERAL1_SMALL
+                Image: !Ref CodeBuildEnvironment
+                EnvironmentVariables:
+                  - Name: BUILD_OUTPUT_BUCKET
+                    Value: !Ref BuildBucket
+            ServiceRole: !GetAtt PipelineRole.Arn
+            Source: 
+                Type: CODEPIPELINE
+    PipelinePolicy:
+      Type: AWS::IAM::ManagedPolicy
+      Properties:
+        PolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: arn:aws:logs:*:*:*
+            - Effect: Allow
+              Action: 
+                - 's3:GetObject'
+                - 's3:GetObjectVersion'
+                - 's3:PutObject'
+                - 's3:ListBucket'
+                - 's3:GetBucketLocation'
+              Resource:
+                - !Sub '${PipelineBucketARN}/*'
+                - !Sub '${PipelineBucketARN}'
+                - !Sub '${BuildBucketARN}/*'
+                - !Sub '${BuildBucketARN}'
+            - Effect: Allow
+              Action:
+                - 'iam:PassRole'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'codecommit:*'
+              Resource: 
+                - !Ref CodeCommitRepoARN
+            - Effect: Allow
+              Action:
+                - 'codebuild:StartBuild'
+                - 'codebuild:BatchGetBuilds'
+              Resource: 
+                - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AcctPrefix}-${Environment}-${AppName}-codebuild01'
+            - Effect: Allow
+              Action:
+                - 'kms:*'
+              Resource: 
+                - !Ref PipelineBucketKMSKeyARN
+            - Effect: Allow
+              Action:
+                - sts:AssumeRole
+              Resource: 
+                - !Ref DevAccountDeploymentRoleARN
+                - !Ref ProdAccountDeploymentRoleARN
+    PipelineRole:
+      Type: AWS::IAM::Role
+      Properties:
+          RoleName: !Sub '${AcctPrefix}-${Environment}-${AppName}-pipelinerole'
+          AssumeRolePolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Action: 
+                  - 'sts:AssumeRole'
+                  Effect: Allow
+                  Principal:
+                    Service: 
+                      - codepipeline.amazonaws.com
+                - Action: 
+                  - 'sts:AssumeRole'
+                  Effect: Allow
+                  Principal:
+                    Service: 
+                      - codebuild.amazonaws.com
+          Path: /
+          ManagedPolicyArns:
+              - !Ref PipelinePolicy
+    Pipeline:
+        Type: AWS::CodePipeline::Pipeline
+        Properties:
+            ArtifactStore: 
+                Location: !Ref PipelineBucket
+                Type: S3
+                EncryptionKey:
+                  Id: !Ref PipelineBucketKMSKeyARN
+                  Type: KMS
+            Name: !Sub ${AcctPrefix}-${Environment}-${AppName}-pipeline01
+            RoleArn: !GetAtt PipelineRole.Arn
+            Stages:
+                - Name: Source
+                  Actions:
+                    - Name: CodeCommitRepo
+                      ActionTypeId:
+                        Category: Source
+                        Owner: AWS
+                        Provider: CodeCommit
+                        Version: 1
+                      Configuration:
+                        RepositoryName: !Ref CodeCommitRepoName
+                        BranchName:  !Ref CodeCommitBranchName
+                      OutputArtifacts:
+                        - Name: SourceZip
+                      RunOrder: 1
+                - Name: Dev
+                  Actions:
+                    - Name: DevPackageDeployment
+                      ActionTypeId:
+                        Category: Build
+                        Owner: AWS
+                        Provider: CodeBuild
+                        Version: 1
+                      Configuration:
+                        ProjectName: !Ref BuildProject
+                        EnvironmentVariables: '[
+                          {"name":"ENV_FILE","value":".env.dev","type":"PLAINTEXT"}
+                          ]'
+                      InputArtifacts:
+                        - Name: SourceZip
+                      OutputArtifacts:
+                        - Name: DevBuildZip
+                      RunOrder: 1
+                    - Name: DevExecuteDeployment
+                      RoleArn: !Ref DevAccountDeploymentRoleARN
+                      ActionTypeId:
+                        Category: Deploy
+                        Owner: AWS
+                        Provider: CloudFormation
+                        Version: 1
+                      Configuration:
+                        ActionMode: CREATE_UPDATE
+                        RoleArn: !Ref DevAccountDeploymentRoleARN
+                        StackName: !Sub ${AcctPrefix}-dev-${AppName}-resources
+                        TemplatePath: !Sub 'DevBuildZip::template-out.yaml'
+                        TemplateConfiguration: !Sub 'DevBuildZip::.conf'
+                        Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                      InputArtifacts:
+                        - Name: DevBuildZip
+                      RunOrder: 2
+                - Name: Prod
+                  Actions:
+                    - Name: ProdDeploymentApproval
+                      ActionTypeId:
+                        Category: Approval
+                        Owner: AWS
+                        Provider: Manual
+                        Version: 1
+                      RunOrder: 1                    
+                    - Name: ProdPackageDeployment
+                      ActionTypeId:
+                        Category: Build
+                        Owner: AWS
+                        Provider: CodeBuild
+                        Version: 1
+                      Configuration:
+                        ProjectName: !Ref BuildProject
+                        EnvironmentVariables: '[
+                          {"name":"ENV_FILE","value":".env.prod","type":"PLAINTEXT"}
+                          ]'
+                      InputArtifacts:
+                        - Name: SourceZip
+                      OutputArtifacts:
+                        - Name: ProdBuildZip
+                      RunOrder: 2
+                    - Name: ProdExecuteDeployment
+                      RoleArn: !Ref ProdAccountDeploymentRoleARN
+                      ActionTypeId:
+                        Category: Deploy
+                        Owner: AWS
+                        Provider: CloudFormation
+                        Version: 1
+                      Configuration:
+                        ActionMode: CREATE_UPDATE
+                        RoleArn: !Ref ProdAccountDeploymentRoleARN
+                        StackName: !Sub ${AcctPrefix}-prod-${AppName}-resources
+                        TemplatePath: !Sub 'ProdBuildZip::template-out.yaml'
+                        TemplateConfiguration: !Sub 'ProdBuildZip::.conf'
+                        Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                      InputArtifacts:
+                        - Name: ProdBuildZip
+                      RunOrder: 3
