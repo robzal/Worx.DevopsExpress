@@ -17,19 +17,16 @@ Parameters:
     Default: 'admin'
   AppName:
     Type: 'String'
-    Default: 'crossacctpipeline'
-  RandomValue:
-    Type: 'String'
-    Default: '1234'
+    Default: 'crossaccount-demo'
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 30
     MemorySize: 256
     Environment:
       Variables:
         ENVIRONMENT: !Ref Environment
         ACCT_PREFIX: !Ref AcctPrefix
-        RANDOM_VALUE: !Ref RandomValue
+        APPNAME: !Ref AppName
 Resources:
   CustomLayer:
     Type: AWS::Serverless::LayerVersion

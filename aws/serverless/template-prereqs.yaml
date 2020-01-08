@@ -21,12 +21,6 @@ Parameters:
     Description: AWS AccountNumber for production
     Type: String
     Default: 271005954527
-  CodePipelineBuildPermissions:
-    Description: Conditionally adds the access required by code pipeline & build role
-    Type: String
-    Default: true
-Conditions:
-  PipelineBuildPermissions: !Equals [ !Ref CodePipelineBuildPermissions, true ]
 Resources:
   PipelineKMSKey:
     Type: AWS::KMS::Key
@@ -43,18 +37,7 @@ Resources:
             Principal:
               AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
             Action:
-              - "kms:Create*"
-              - "kms:Describe*"
-              - "kms:Enable*"
-              - "kms:List*"
-              - "kms:Put*"
-              - "kms:Update*"
-              - "kms:Revoke*"
-              - "kms:Disable*"
-              - "kms:Get*"
-              - "kms:Delete*"
-              - "kms:ScheduleKeyDeletion"
-              - "kms:CancelKeyDeletion"
+              - "kms:*"
             Resource: "*"
           -
             Sid: Allow use of the key By cross account identities
@@ -63,10 +46,7 @@ Resources:
               AWS:
                 - !Sub arn:aws:iam::${ProdAccount}:root
                 - !Sub arn:aws:iam::${DevAccount}:root
-                - !If
-                  - PipelineBuildPermissions
-                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${AcctPrefix}-${Environment}-${AppName}-pipelinerole
-                  - !Sub arn:aws:iam::${AWS::AccountId}:root
+                - !Sub arn:aws:iam::${AWS::AccountId}:root
             Action:
               - kms:Encrypt
               - kms:Decrypt
@@ -118,7 +98,7 @@ Resources:
               AWS:
                 - !Sub 'arn:aws:iam::${ProdAccount}:root'
           - 
-            Sid: Allows pipeline role access to pipeline bucket
+            Sid: Allows root access to pipeline bucket
             Action: 
               - "s3:*"
             Effect: "Allow"
@@ -127,10 +107,7 @@ Resources:
               - !Sub '${PipelineBucket.Arn}'
             Principal: 
               AWS:
-                - !If
-                  - PipelineBuildPermissions
-                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${AcctPrefix}-${Environment}-${AppName}-pipelinerole
-                  - !Sub arn:aws:iam::${AWS::AccountId}:root
+                - !Sub arn:aws:iam::${AWS::AccountId}:root
   BuildBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -163,7 +140,18 @@ Resources:
               - !Sub '${BuildBucket.Arn}'
             Principal: 
               AWS:
-                - !Sub 'arn:aws:iam::${ProdAccount}:root'
+              - !Sub 'arn:aws:iam::${ProdAccount}:root'
+          - 
+            Sid: Allows root access to build bucket
+            Action: 
+              - "s3:*"
+            Effect: "Allow"
+            Resource: 
+              - !Sub '${BuildBucket.Arn}/*'
+              - !Sub '${BuildBucket.Arn}'
+            Principal: 
+              AWS:
+                - !Sub arn:aws:iam::${AWS::AccountId}:root  
 Outputs:
   PipelineKMSKey:
     Value: !GetAtt [PipelineKMSKey,Arn]

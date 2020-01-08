@@ -16,7 +16,7 @@ setup:
 init: setup
 	aws cloudformation deploy \
 		--template-file template-prereqs.yaml \
-		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-init" \
+		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-demo-prereqs" \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--region ${AWS_REGION} \
 		--profile ${AWS_PROFILE} \
@@ -75,7 +75,7 @@ deploy: setup build
 		--template-file template-out.yaml \
 		--s3-bucket ${BUILD_BUCKET} \
 		--s3-prefix cfn \
-		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-resources" \
+		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-stack" \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--profile ${AWS_RUN_PROFILE} \
 		--region ${AWS_REGION} \

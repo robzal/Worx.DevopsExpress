@@ -13,7 +13,7 @@ Parameters:
         Description: Environment Name to form part of resource and stack names and config values
     AppName:
         Type: String
-        Default: crossacctpipeline
+        Default: crossaccount-demo
         Description: Short Name for the Application being deployed, to be used in resource and stack names
     PipelineBucket:
         Type: String

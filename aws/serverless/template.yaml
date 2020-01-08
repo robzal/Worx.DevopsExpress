@@ -21,12 +21,9 @@ Parameters:
     Type: String
     Default: serverless-demo
     Description: Short Name for the Application being deployed, to be used in resource and stack names
-  RandomValue:
-    Type: 'String'
-    Default: '1234'
 Globals:
   Function:
-    Timeout: 3
+    Timeout: 30
     MemorySize: 256
     Environment:
       Variables:

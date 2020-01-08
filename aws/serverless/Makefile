@@ -16,23 +16,38 @@ setup:
 init: setup
 	aws cloudformation deploy \
 		--template-file template-prereqs.yaml \
-		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-init" \
+		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-demo-prereqst" \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--region ${AWS_REGION} \
-		--profile ${AWS_BUILD_PROFILE} \
+		--profile ${AWS_PROFILE} \
 		--parameter-overrides $(shell cat .params)
 
 .PHONY: init
 
 pipeline: setup
-	sam deploy \
+	sam build \
 		--template-file template-pipeline.yaml \
+		--region ${AWS_REGION} \
+		--profile ${AWS_PROFILE} \
+		${SAM_DEBUG_OPTION}
+
+	sam package \
+		--template-file .aws-sam/build/template.yaml \
+		--output-template-file template-out.yaml \
+		--s3-bucket ${BUILD_BUCKET} \
+		--s3-prefix cfn \
+		--profile ${AWS_PROFILE} \
+		--region ${AWS_REGION} \
+		${SAM_DEBUG_OPTION}
+
+	sam deploy \
+		--template-file template-out.yaml \
 		--s3-bucket ${BUILD_BUCKET} \
 		--s3-prefix cfn \
 		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-pipeline" \
 		--capabilities CAPABILITY_NAMED_IAM \
 		--region ${AWS_REGION} \
-		--profile ${AWS_BUILD_PROFILE} \
+		--profile ${AWS_PROFILE} \
 		--parameter-overrides $(shell cat .params) \
 		${SAM_DEBUG_OPTION}
 
@@ -41,18 +56,18 @@ pipeline: setup
 build: setup
 	sam build \
 		--region ${AWS_REGION} \
-		--profile ${AWS_BUILD_PROFILE} \
+		--profile ${AWS_PROFILE} \
 		${SAM_DEBUG_OPTION}
 
 .PHONY: build
 
-deploy: setup
+deploy: setup build
 	sam package \
 		--template-file .aws-sam/build/template.yaml \
 		--output-template-file template-out.yaml \
 		--s3-bucket ${BUILD_BUCKET} \
 		--s3-prefix cfn \
-		--profile ${AWS_BUILD_PROFILE} \
+		--profile ${AWS_PROFILE} \
 		--region ${AWS_REGION} \
 		${SAM_DEBUG_OPTION}
 
@@ -60,9 +75,9 @@ deploy: setup
 		--template-file template-out.yaml \
 		--s3-bucket ${BUILD_BUCKET} \
 		--s3-prefix cfn \
-		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-resources" \
+		--stack-name "${ACCT_PREFIX}-${ENVIRONMENT}-${APPNAME}-stack" \
 		--capabilities CAPABILITY_NAMED_IAM \
-		--profile ${AWS_PROFILE} \
+		--profile ${AWS_RUN_PROFILE} \
 		--region ${AWS_REGION} \
 		--parameter-overrides $(shell cat .params) \
 		${SAM_DEBUG_OPTION}
@@ -76,7 +91,7 @@ run: setup build
 		--debug \
 		--debug-port ${SAM_DEBUG_PORT} \
 		--region ${AWS_REGION} \
-		--profile ${AWS_PROFILE} \
+		--profile ${AWS_RUN_PROFILE} \
 		--parameter-overrides $(shell cat .params) \
 		${SAM_DEBUG_OPTION}
 
