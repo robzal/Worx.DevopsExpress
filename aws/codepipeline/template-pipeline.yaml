@@ -1,4 +1,7 @@
-AWSTemplateFormatVersion: 2010-09-09
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Serverless Template for codecommit sourced sequenced cross account pipeline in AWS
 Parameters:
     AcctPrefix:
         Type: String
@@ -93,11 +96,7 @@ Resources:
               Resource: arn:aws:logs:*:*:*
             - Effect: Allow
               Action: 
-                - 's3:GetObject'
-                - 's3:GetObjectVersion'
-                - 's3:PutObject'
-                - 's3:ListBucket'
-                - 's3:GetBucketLocation'
+                - 's3:*'
               Resource:
                 - !Sub '${PipelineBucketARN}/*'
                 - !Sub '${PipelineBucketARN}'
