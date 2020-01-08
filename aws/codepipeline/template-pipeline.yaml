@@ -25,7 +25,7 @@ Parameters:
         Description: ARN of S3 bucket for CodePipeline to use
     PipelineBucketKMSKeyARN:
         Type: String
-        Default: arn:aws:kms:ap-southeast-2:005548444942:alias/codepipeline-demo
+        Default: arn:aws:kms:ap-southeast-2:005548444942:key/da4e51e9-7864-4b9c-ae10-93a571d15269
         Description: ARN of KMS key used for S3 pipeline bucket encryption
     DevAccountDeploymentRoleARN:
         Type: String
