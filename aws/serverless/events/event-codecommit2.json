@@ -1,0 +1,23 @@
+{
+    "version": "0",
+    "id": "5ac3f703-d275-fcd8-35c9-31c0e91ff179",
+    "detail-type": "CodeCommit Repository State Change",
+    "source": "aws.codecommit",
+    "account": "005548444942",
+    "time": "2020-01-09T03: 25: 16Z",
+    "region": "ap-southeast-2",
+    "resources": [
+        "arn:aws:codecommit:ap-southeast-2: 005548444942:codepipeline-demo"
+    ],
+    "detail": {
+        "callerUserArn": "arn:aws:sts: : 005548444942:assumed-role/Admins/botocore-session-1578538830",
+        "commitId": "86e4ebcea9c46c6c2a36125e53442df5845f52a8",
+        "event": "referenceUpdated",
+        "oldCommitId": "908b614a0e8b46cdd006d37b75dac2238d134482",
+        "referenceFullName": "refs/heads/master",
+        "referenceName": "master",
+        "referenceType": "branch",
+        "repositoryId": "b5795e8a-a790-4cae-b0a1-2eb388d62283",
+        "repositoryName": "codepipeline-demo"
+    }
+}
