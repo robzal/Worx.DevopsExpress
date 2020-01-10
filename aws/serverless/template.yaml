@@ -85,7 +85,7 @@ Resources:
     Properties:
       CodeUri: './lambdas/api-lambda/'
       Handler: lambda_function.lambda_handler
-      Runtime: python3.7
+      Runtime: python3.8
       FunctionName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMAPIFunction'
       Events:
         APIGetAllEvent:
@@ -116,7 +116,7 @@ Resources:
     Properties:
       CodeUri: './lambdas/s3-lambda/'
       Handler: lambda_function.lambda_handler
-      Runtime: python3.7
+      Runtime: python3.8
       FunctionName: !Sub '${AcctPrefix}-${Environment}-${AppName}-SAMS3Function'
       Events:
         S3Event:
